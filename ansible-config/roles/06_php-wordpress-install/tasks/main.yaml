@@ -1,0 +1,64 @@
+---
+
+- name: Update package cache
+  apt:
+    update_cache: yes
+- name: Install PHP packages
+  apt:
+    name:
+      - php7.4
+      - php7.4-curl
+      - php7.4-gd
+      - php7.4-intl
+      - php7.4-mysql
+      - php-memcached
+      - php7.4-mbstring
+      - php7.4-zip
+      - php7.4-xml
+    state: present
+
+- name: Install unzip
+  apt:
+    name: unzip
+    state: present
+  
+- name: Download and extract WordPress
+  shell: |
+    wget https://wordpress.org/latest.zip -P /var/www/
+    unzip /var/www/latest.zip -d /var/www/
+    mv /var/www/wordpress /var/www/{{ wordpress_directory }}
+    chown root:root /var/www/{{ wordpress_directory }} -R
+    rm /var/www/latest.zip
+  when: ansible_hostname == 'LB'
+
+
+- name: Create MySQL database and user
+  shell: |
+    mysql -e "create database wp_cluster;"
+    mysql -e "grant all privileges on wp_cluster.* to wpc@localhost identified by '{{mysql_wp_password}}';"
+  when: ansible_hostname == 'LB'
+    
+- name: Remove /var/www/html directory
+  file:
+    path: /var/www/html
+    state: absent
+  when: ansible_hostname == 'LB'
+    
+- name: Copy and Update Apache VirtualHost config
+  template:
+    src: default.conf.j2
+    dest: /etc/apache2/sites-enabled/000-default.conf
+  notify: Restart Apache
+  when: ansible_hostname == 'LB'
+
+# To also automate the first db and user setup of wordpress
+- name: Copy wp-config.php
+  template:
+    src: wp-config.j2
+    dest: /var/www/{{wordpress_directory}}/wp-config.php
+  notify: Restart Apache
+  when: ansible_hostname == 'LB'
+
+
+
+

@@ -1,0 +1,7 @@
+# 03_percona-db-install vars:
+repuser_password: "X443!ksjc"
+
+# 05_php-wordpress-install vars:
+wordpress_directory: "wordpress-as.linuxcode.eu"
+mysql_wp_password: "892!jd5TZa"
+domain_name: "wordpress-as.linuxcode.eu"

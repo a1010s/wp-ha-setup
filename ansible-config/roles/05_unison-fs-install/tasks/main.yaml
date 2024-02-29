@@ -1,0 +1,72 @@
+---
+
+- name: Uncomment and set StrictHostKeyChecking to no
+  lineinfile:
+    path: /etc/ssh/ssh_config
+    regexp: '^#?\s*StrictHostKeyChecking\s+'
+    line: 'StrictHostKeyChecking no'
+
+- name: Install Unison and openssh-server
+  apt:
+    name:
+      - unison
+      - openssh-server
+    state: present
+
+- name: Synchronize [LB] /var/www with other nodes
+  shell: >
+    yes | unison /var/www ssh://10.0.0.6//var/www -owner -group #IP node2
+    && yes | unison /var/www ssh://10.0.0.7//var/www -owner -group #IP node3
+    && yes | unison /var/www ssh://10.0.0.8//var/www -owner -group #IP node4
+  async: 90  # Set the timeout to 90 seconds (adjust as needed)
+  poll: 0    # Poll immediately
+  when: ansible_hostname == 'LB'
+
+- name: Synchronize [web1] /var/www with other nodes
+  shell: >
+    yes | unison /var/www ssh://10.0.0.5//var/www -owner -group 
+    && yes | unison /var/www ssh://10.0.0.7//var/www -owner -group 
+    && yes | unison /var/www ssh://10.0.0.8//var/www -owner -group
+  async: 90
+  poll: 0
+  when: ansible_hostname == 'web1'
+
+- name: Synchronize [web2] /var/www with other nodes
+  shell: >
+    yes | unison /var/www ssh://10.0.0.6//var/www -owner -group 
+    && yes | unison /var/www ssh://10.0.0.5//var/www -owner -group 
+    && yes | unison /var/www ssh://10.0.0.8//var/www -owner -group 
+  async: 90
+  poll: 0
+  when: ansible_hostname == 'web2'
+
+- name: Synchronize [web3] /var/www with other nodes
+  shell: >
+    yes | unison /var/www ssh://10.0.0.6//var/www -owner -group 
+    && yes | unison /var/www ssh://10.0.0.7//var/www -owner -group 
+    && yes | unison /var/www ssh://10.0.0.5//var/www -owner -group 
+  async: 90
+  poll: 0
+  when: ansible_hostname == 'web3'
+
+
+- name: Create temporary file for cron jobs
+  file:
+    path: /tmp/cron_jobs
+    state: touch
+  when: ansible_hostname == 'LB'
+
+- name: Add cron jobs for replication on LB
+  lineinfile:
+    dest: /tmp/cron_jobs
+    line: "{{ item }}"
+  loop:
+        - "* * * * * unison -batch /var/www ssh://10.0.0.6//var/www &> /dev/null"
+        - "* * * * * unison -batch /var/www ssh://10.0.0.7//var/www &> /dev/null"
+        - "* * * * * unison -batch /var/www ssh://10.0.0.8//var/www &> /dev/null"
+  when: ansible_hostname == 'LB'
+
+
+- name: Add cron jobs to crontab
+  command: "crontab /tmp/cron_jobs"
+  when: ansible_hostname == 'LB'

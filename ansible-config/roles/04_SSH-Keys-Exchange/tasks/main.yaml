@@ -1,0 +1,14 @@
+- name: Fetch public key from the local machine
+  become: yes
+  shell: cat ~/.ssh/id_rsa.pub
+  register: public_key_output
+
+- name: Add public key to authorized_keys on other servers
+  become: yes
+  authorized_key:
+    user: root
+    state: present
+    key: "{{ public_key_output.stdout }}"
+  with_items: "{{ groups['all'] }}"
+  when: inventory_hostname != item
+  delegate_to: "{{ item }}"

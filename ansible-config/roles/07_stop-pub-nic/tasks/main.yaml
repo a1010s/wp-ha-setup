@@ -1,0 +1,17 @@
+---
+- name: Disable eth0 interface
+  command: sudo ip link set eth0 down
+  async: 300
+  poll: 0
+  ignore_errors: yes
+  when: ansible_hostname != 'LB'
+  
+- name: Wait for the interface to be disabled
+  async_status:
+    jid: "{{ item.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 60
+  delay: 5
+  loop: "{{ ansible_play_batch }}"
+  when: item.ansible_job_id is defined

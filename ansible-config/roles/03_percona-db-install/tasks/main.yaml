@@ -1,0 +1,141 @@
+---
+- name: Download Percona XtraDB Cluster repository package
+  get_url:
+    url: https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+    dest: /tmp/percona-release_latest.generic_all.deb
+
+- name: Install Percona repository package
+  apt:
+    deb: /tmp/percona-release_latest.generic_all.deb
+    state: present
+
+- name: Pre-seed debconf with empty root password
+  debconf:
+    name: 'percona-xtradb-cluster-server'
+    question: 'percona-xtradb-cluster-server/root_password'
+    value: ''
+    vtype: password
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install Percona XtraDB
+  apt:
+    name: percona-xtradb-cluster-57
+    state: present
+    update_cache: yes
+
+- name: Stop MySQL service
+  service:
+    name: mysql
+    state: stopped
+
+- name: Add Percona XtraDB configuration to LB
+  blockinfile:
+    path: /etc/mysql/my.cnf
+    block: |
+      [mysqld]
+      wsrep_provider=/usr/lib/libgalera_smm.so
+      wsrep_cluster_name=wordpresscluster
+      wsrep_cluster_address=gcomm://
+      wsrep_node_name=node1
+      wsrep_node_address=10.0.0.5
+      wsrep_sst_method=xtrabackup-v2
+      wsrep_sst_auth=repuser:{{ repuser_password }}
+      pxc_strict_mode=ENFORCING
+      binlog_format=ROW
+      default_storage_engine=InnoDB
+      innodb_autoinc_lock_mode=2
+  when: ansible_hostname == 'LB'
+
+# Very important! This defines LB as the master node of the cluster 
+# and starts the bootstrap. Without this, all mysql services fail to start.
+- name: Change safe_to_bootstrap in grastate.dat on LB
+  lineinfile:
+    path: /var/lib/mysql/grastate.dat
+    regexp: '^safe_to_bootstrap: 0$'
+    line: 'safe_to_bootstrap: 1'
+    backup: yes
+  when: ansible_hostname == 'LB'
+
+    
+- name: Start MySQL service
+  service:
+    name: mysql
+    state: started
+  when: ansible_hostname == 'LB'
+
+- name: Add Percona XtraDB configuration to web1
+  blockinfile:
+    path: /etc/mysql/my.cnf
+    block: |
+      [mysqld]
+      wsrep_provider=/usr/lib/libgalera_smm.so
+      wsrep_cluster_name=wordpresscluster
+      wsrep_cluster_address=gcomm://10.0.0.5,10.0.0.6,10.0.0.7,10.0.0.8
+      wsrep_node_name=node2
+      wsrep_node_address=10.0.0.6
+      wsrep_sst_method=xtrabackup-v2
+      wsrep_sst_auth=repuser:{{ repuser_password }}
+      pxc_strict_mode=ENFORCING
+      binlog_format=ROW
+      default_storage_engine=InnoDB
+      innodb_autoinc_lock_mode=2
+  when: ansible_hostname == 'web1'
+
+- name: Add Percona XtraDB configuration to web2
+  blockinfile:
+    path: /etc/mysql/my.cnf
+    block: |
+      [mysqld]
+      wsrep_provider=/usr/lib/libgalera_smm.so
+      wsrep_cluster_name=wordpresscluster
+      wsrep_cluster_address=gcomm://10.0.0.5,10.0.0.6,10.0.0.7,10.0.0.8
+      wsrep_node_name=node3
+      wsrep_node_address=10.0.0.7
+      wsrep_sst_method=xtrabackup-v2
+      wsrep_sst_auth=repuser:{{ repuser_password }}
+      pxc_strict_mode=ENFORCING
+      binlog_format=ROW
+      default_storage_engine=InnoDB
+      innodb_autoinc_lock_mode=2
+  when: ansible_hostname == 'web2'
+
+- name: Add Percona XtraDB configuration to web3
+  blockinfile:
+    path: /etc/mysql/my.cnf
+    block: |
+      [mysqld]
+      wsrep_provider=/usr/lib/libgalera_smm.so
+      wsrep_cluster_name=wordpresscluster
+      wsrep_cluster_address=gcomm://10.0.0.5,10.0.0.6,10.0.0.7,10.0.0.8
+      wsrep_node_name=node4
+      wsrep_node_address=10.0.0.8
+      wsrep_sst_method=xtrabackup-v2
+      wsrep_sst_auth=repuser:{{ repuser_password }}
+      pxc_strict_mode=ENFORCING
+      binlog_format=ROW
+      default_storage_engine=InnoDB
+      innodb_autoinc_lock_mode=2
+  when: ansible_hostname == 'web3'
+
+- name: Update wsrep_cluster_address on LB
+  lineinfile:
+    path: /etc/mysql/my.cnf
+    regexp: '^wsrep_cluster_address='
+    line: 'wsrep_cluster_address=gcomm://10.0.0.5,10.0.0.6,10.0.0.7,10.0.0.8'
+  when: ansible_hostname == 'LB'
+
+- name: Create repuser and grant privileges
+  shell: |
+    mysql -uroot -e "create user repuser@localhost identified by '{{ repuser_password }}'"
+    mysql -uroot -e "grant reload, replication client, process, lock tables on *.* to repuser@localhost"
+    mysql -uroot -e "flush privileges"
+  when: ansible_hostname == 'LB'
+
+
+# POST INSTALL CHECKS:
+# show status like '%wsrep%';  -> check on LB to see the cluster_size: 4
+# make a post on wordpress. ssh into a web server (ex.: web3) and check:
+# use wp_cluster; select * from wp_posts; -> the post should be there as well.

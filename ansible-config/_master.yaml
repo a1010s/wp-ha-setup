@@ -1,0 +1,23 @@
+---
+- name: Wordpress HA Cluster Setup (Configure && Install)
+  hosts: all
+  vars_files:
+    - vars.yaml
+
+  roles:
+    
+    - 01_infos      # Update the Inventory list with hostnames and groups
+    - 02_ssh-keys   # Generates SSH-Keys on each Server | Copy LB's pub key to other hosts
+    - 03_percona-db-install # Install and Configure PerconaDB XtraCluster 
+    - 04_SSH-Keys-Exchange  # Intercomunication between all Servers
+    - 05_unison-fs-install  # Install and Configure Unison Filesystem
+    - 06_php-wordpress-install  # Install and Configure Wordpress and all the dependencies
+    
+
+  tasks:
+    - name: Execute restart-mysql.sh script
+      shell: /tmp/restart-mysql.sh
+    
+    - name: Include role 07_stop-pub-nic
+      include_role:
+        name: 07_stop-pub-nic

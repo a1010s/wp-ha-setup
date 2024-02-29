@@ -1,0 +1,6 @@
+stages:
+  - provision
+  - configure 
+
+provision_infrastructure:
+  stage: provision 

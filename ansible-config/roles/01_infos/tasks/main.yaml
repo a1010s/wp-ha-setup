@@ -1,0 +1,27 @@
+---
+- name: What is my ansible_hostname
+  debug:
+    var: ansible_hostname
+
+- name: Update Ansible inventory with hostnames
+  lineinfile:
+    path: "{{ inventory_dir }}/inventory"
+    regexp: '^{{ inventory_hostname }}'
+    line: '{{ inventory_hostname }} ansible_hostname={{ ansible_hostname }}'
+  delegate_to: localhost
+
+- name: Render the Jinja2 template and update the inventory file
+  template:
+    src: inventory_template.j2
+    dest: "{{ inventory_dir }}/inventory"
+  delegate_to: localhost
+
+
+# INFO: For some strange reason, mysql service do not start when triggered by Ansible.
+# This makes sure that mysql services are running on all the hosts.
+
+- name: Transfer restart-mysql.sh to remote hosts
+  copy:
+    src: ./restart-mysql.sh
+    dest: /tmp/restart-mysql.sh
+    mode: '0755' 

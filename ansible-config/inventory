@@ -1,0 +1,8 @@
+[web1]
+195.201.143.10 ansible_hostname=web1
+[web2]
+116.203.130.174 ansible_hostname=web2
+[web3]
+159.69.21.229 ansible_hostname=web3
+[LB]
+116.203.198.77 ansible_hostname=LB
